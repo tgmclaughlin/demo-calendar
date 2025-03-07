@@ -1,0 +1,31 @@
+[project]
+name = "demo-calendar"
+version = "0.1.0"
+description = "AI Performance Manager Calendar - A minimal web application for managing training schedules"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.103.0",
+    "uvicorn>=0.23.2",
+    "sqlalchemy>=2.0.19",
+    "pydantic>=2.3.0",
+    "python-dateutil>=2.8.2",
+    "jinja2>=3.1.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=23.7.0",
+    "isort>=5.12.0",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
