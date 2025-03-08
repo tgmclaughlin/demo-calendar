@@ -20,6 +20,29 @@
             --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
             --transition: all 0.3s ease;
         }
+        
+        /* Calendar refresh animation */
+        @keyframes calendar-refresh {
+            0% { 
+                opacity: 1;
+                transform: scale(1);
+                box-shadow: 0 2px 20px rgba(0, 0, 0, 0.04);
+            }
+            50% { 
+                opacity: 0.9;
+                transform: scale(0.998);
+                box-shadow: 0 2px 20px rgba(0, 122, 255, 0.12);
+            }
+            100% { 
+                opacity: 1;
+                transform: scale(1);
+                box-shadow: 0 2px 20px rgba(0, 0, 0, 0.04);
+            }
+        }
+        
+        .calendar-refresh {
+            animation: calendar-refresh 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
 
         /* Work events - blue */
         .event-work {
@@ -530,7 +553,9 @@
                 view: 'week',
                 currentDate: new Date(), // Start with today
                 events: [],
-                selectedEvent: null
+                selectedEvent: null,
+                lastEventCount: 0,
+                lastEventHash: ''
             };
 
             // DOM elements
@@ -567,6 +592,9 @@
             // Initialize calendar and fetch events
             initCalendar();
             fetchEvents();
+            
+            // Start polling for calendar updates
+            startPollingForUpdates();
             
             // Always use week view
             state.view = 'week';
@@ -925,11 +953,28 @@
                     .then(data => {
                         console.log("Fetched events:", data);
                         state.events = data;
+                        // Store the initial event hash for comparison
+                        state.lastEventHash = generateEventsHash(data);
                         renderEvents();
                     })
                     .catch(error => {
                         console.error('Error fetching events:', error);
                     });
+            }
+            
+            // Apply refresh animation to calendar
+            function animateCalendarRefresh() {
+                const calendarElement = document.querySelector('.week-view');
+                if (calendarElement) {
+                    // Remove the class if it's already there
+                    calendarElement.classList.remove('calendar-refresh');
+                    
+                    // Trigger reflow to restart animation
+                    void calendarElement.offsetWidth;
+                    
+                    // Add the class back to trigger animation
+                    calendarElement.classList.add('calendar-refresh');
+                }
             }
 
             // Open modal to add a new event
@@ -1057,6 +1102,7 @@
                     console.log("Event created successfully:", data);
                     eventModal.style.display = 'none';
                     fetchEvents();
+                    animateCalendarRefresh();
                 })
                 .catch(error => {
                     console.error('Error creating event:', error);
@@ -1079,6 +1125,7 @@
                 })
                 .then(() => {
                     eventModal.style.display = 'none';
+                    animateCalendarRefresh();
                 })
                 .catch(error => {
                     console.error('Error updating event:', error);
@@ -1107,6 +1154,7 @@
                 .then(data => {
                     eventModal.style.display = 'none';
                     fetchEvents();
+                    animateCalendarRefresh();
                 })
                 .catch(error => {
                     console.error('Error deleting event:', error);
@@ -1132,6 +1180,7 @@
                 .then(data => {
                     alert(data.message);
                     fetchEvents();
+                    animateCalendarRefresh();
                 })
                 .catch(error => {
                     console.error('Error clearing calendar:', error);
@@ -1201,6 +1250,53 @@
                 const dateObj = new Date(isoString);
                 console.log(`Parsed date from ${isoString}: ${dateObj}`);
                 return dateObj;
+            }
+            
+            // Generate a simple hash of the events array to detect changes
+            function generateEventsHash(events) {
+                return events.map(e => `${e.id}-${e.title}-${e.start_time}`).join('|');
+            }
+            
+            // Start polling for calendar updates
+            function startPollingForUpdates() {
+                // Check for updates every 3 seconds
+                setInterval(checkForCalendarUpdates, 3000);
+            }
+            
+            // Check if calendar has been updated via API
+            function checkForCalendarUpdates() {
+                // Calculate date range based on week view
+                let startDate = getStartOfWeek(state.currentDate);
+                let endDate = new Date(startDate);
+                endDate.setDate(startDate.getDate() + 7);
+                
+                // Format dates for API
+                const startDateStr = formatDateTime(startDate);
+                const endDateStr = formatDateTime(endDate);
+                
+                // Fetch from API silently (no console logging)
+                fetch(`/api/calendar?start_date=${startDateStr}&end_date=${endDateStr}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        // Generate a hash of the new events data
+                        const newEventHash = generateEventsHash(data);
+                        
+                        // Check if events have changed (different count or hash)
+                        if (state.lastEventHash !== newEventHash) {
+                            console.log("Calendar updated externally, refreshing view");
+                            
+                            // Update state
+                            state.events = data;
+                            state.lastEventHash = newEventHash;
+                            
+                            // Render events and animate the refresh
+                            renderEvents();
+                            animateCalendarRefresh();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error checking for calendar updates:', error);
+                    });
             }
 
             // Expose function to window for inline event handlers
