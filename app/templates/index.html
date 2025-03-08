@@ -739,41 +739,33 @@
                 // No filtering needed - show all events
                 const filteredEvents = state.events;
                 
-                // Render each event
+                // Group events by day for collision detection
+                const eventsByDay = {};
+                
+                // First pass: sort events by start time and group by day
                 filteredEvents.forEach(event => {
-                    console.log("Processing event:", event.title, "Start:", event.start_time, "End:", event.end_time);
-                    
-                    // Create date objects for the event times
-                    // Fix: Parse the dates in a way that handles the timezone consistently
                     const startDate = new Date(event.start_time);
-                    const endDate = new Date(event.end_time);
-                    
-                    // Log the exact hours and minutes for debugging
-                    console.log("Raw startDate:", startDate.toString());
-                    console.log("Hours:", startDate.getHours(), "Minutes:", startDate.getMinutes());
-                    
-                    // Skip events not in the current week
-                    const startOfWeek = getStartOfWeek(state.currentDate);
-                    const endOfWeek = new Date(startOfWeek);
-                    endOfWeek.setDate(startOfWeek.getDate() + 7);
-                    
-                    if (startDate >= endOfWeek || endDate <= startOfWeek) {
-                        return;
-                    }
-                    
-                    // Skip events completely outside of our visible hours (6am-10pm)
-                    const startHourOfDay = startDate.getHours();
-                    const endHourOfDay = endDate.getHours() + (endDate.getMinutes() > 0 ? 1 : 0);
-                    
-                    if (endHourOfDay <= 6 || startHourOfDay >= 22) {
-                        console.log("Skipping event outside visible hours:", event.title);
-                        return;
-                    }
-                    
-                    // Find the correct day column
                     const dateStr = formatDate(startDate);
-                    console.log("Looking for day column with date:", dateStr, "for event:", event.title);
-                    console.log("Input date:", startDate, "hour:", startDate.getHours(), "mins:", startDate.getMinutes());
+                    
+                    if (!eventsByDay[dateStr]) {
+                        eventsByDay[dateStr] = [];
+                    }
+                    
+                    eventsByDay[dateStr].push({
+                        ...event,
+                        startDate: startDate,
+                        endDate: new Date(event.end_time)
+                    });
+                });
+                
+                // Sort events within each day by start time
+                Object.keys(eventsByDay).forEach(dateStr => {
+                    eventsByDay[dateStr].sort((a, b) => a.startDate - b.startDate);
+                });
+                
+                // Process each day's events
+                Object.keys(eventsByDay).forEach(dateStr => {
+                    const dayEvents = eventsByDay[dateStr];
                     const dayColumn = document.querySelector(`.day-column[data-date="${dateStr}"]`);
                     
                     if (!dayColumn) {
@@ -781,77 +773,136 @@
                         return;
                     }
                     
-                    // Calculate position and height based on hours relative to 6am
-                    // Add 1 hour to fix the timezone offset issue
-                    const startHour = startDate.getHours() + 1 + (startDate.getMinutes() / 60);
-                    const endHour = endDate.getHours() + 1 + (endDate.getMinutes() / 60);
+                    // Create collision groups
+                    const collisionGroups = [];
                     
-                    // For positioning, compute the offset from 6am (our first visible hour)
-                    // If event starts before 6am, clamp to 6am
-                    const visibleStartHour = Math.max(startHour, 6);
-                    
-                    // If event ends after 10pm (22), clamp to 10pm
-                    const visibleEndHour = Math.min(endHour, 22);
-                    
-                    // Calculate visible duration in hours
-                    const visibleDuration = visibleEndHour - visibleStartHour;
-                    
-                    // Convert hours to pixels (50px per hour)
-                    // Top position is how many hours after 6am (visibleStartHour - 6) * 50px per hour
-                    const top = (visibleStartHour - 6) * 50;
-                    
-                    // Height is simply duration in hours * 50px per hour
-                    const height = visibleDuration * 50;
-                    
-                    // Log values for debugging
-                    console.log(`Event: ${event.title}`);
-                    console.log(`Time: ${startDate.toLocaleTimeString()} - ${endDate.toLocaleTimeString()}`);
-                    console.log(`Hours (adjusted): Start=${startHour.toFixed(2)}, End=${endHour.toFixed(2)}`);
-                    console.log(`Visible: ${visibleStartHour.toFixed(2)} to ${visibleEndHour.toFixed(2)}, Duration=${visibleDuration.toFixed(2)}`);
-                    console.log(`Position: top=${top}px, height=${height}px`);
-                    
-                    // Create event element
-                    const eventElement = document.createElement('div');
-                    eventElement.className = `event event-${event.event_type}`;
-                    eventElement.style.top = `${top}px`;
-                    
-                    // Make sure we have valid height (sometimes floating point issues)
-                    const minHeight = 20; // Minimum height in pixels
-                    eventElement.style.height = `${Math.max(height, minHeight)}px`;
-                    eventElement.dataset.id = event.id;
-                    
-                    const startTime = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-                    const endTime = endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-                    
-                    eventElement.innerHTML = `
-                        <div class="event-title">${event.title}</div>
-                        <div class="event-time">${startTime} - ${endTime}</div>
-                    `;
-                    
-                    // Add event listeners
-                    eventElement.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        openEventDetails(event);
+                    // Add each event to appropriate collision group
+                    dayEvents.forEach(event => {
+                        // Skip events completely outside of our visible hours (6am-10pm)
+                        const startHourOfDay = event.startDate.getHours();
+                        const endHourOfDay = event.endDate.getHours() + (event.endDate.getMinutes() > 0 ? 1 : 0);
+                        
+                        if (endHourOfDay <= 6 || startHourOfDay >= 22) {
+                            console.log("Skipping event outside visible hours:", event.title);
+                            return;
+                        }
+                        
+                        // Skip events not in the current week
+                        const startOfWeek = getStartOfWeek(state.currentDate);
+                        const endOfWeek = new Date(startOfWeek);
+                        endOfWeek.setDate(startOfWeek.getDate() + 7);
+                        
+                        if (event.startDate >= endOfWeek || event.endDate <= startOfWeek) {
+                            return;
+                        }
+                        
+                        // Check if this event collides with any existing group
+                        let addedToGroup = false;
+                        
+                        for (const group of collisionGroups) {
+                            // Check if event overlaps with any event in this group
+                            let hasCollision = false;
+                            
+                            for (const existingEvent of group) {
+                                // Two events collide if one starts before the other ends and ends after the other starts
+                                if (event.startDate < existingEvent.endDate && 
+                                    event.endDate > existingEvent.startDate) {
+                                    hasCollision = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (hasCollision) {
+                                group.push(event);
+                                addedToGroup = true;
+                                break;
+                            }
+                        }
+                        
+                        // If no collision with any group, create new group
+                        if (!addedToGroup) {
+                            collisionGroups.push([event]);
+                        }
                     });
                     
-                    // Add tooltip functionality
-                    eventElement.addEventListener('mouseenter', (e) => {
-                        showTooltip(e, event);
-                        // Log event size information for debugging
-                        console.log("Event:", event.title, 
-                          "Start:", startDate.toLocaleTimeString(), 
-                          "End:", endDate.toLocaleTimeString(),
-                          "Duration (hours):", duration,
-                          "Visible start hour:", visibleStartHour,
-                          "Top position (px):", top,
-                          "Height (px):", height);
+                    // Render each collision group
+                    collisionGroups.forEach(group => {
+                        const numEvents = group.length;
+                        
+                        // Render each event in this group
+                        group.forEach((event, index) => {
+                            // Calculate position and height based on hours relative to 6am
+                            // Add 1 hour to fix the timezone offset issue
+                            const startHour = event.startDate.getHours() + 1 + (event.startDate.getMinutes() / 60);
+                            const endHour = event.endDate.getHours() + 1 + (event.endDate.getMinutes() / 60);
+                            
+                            // For positioning, compute the offset from 6am (our first visible hour)
+                            // If event starts before 6am, clamp to 6am
+                            const visibleStartHour = Math.max(startHour, 6);
+                            
+                            // If event ends after 10pm (22), clamp to 10pm
+                            const visibleEndHour = Math.min(endHour, 22);
+                            
+                            // Calculate visible duration in hours
+                            const visibleDuration = visibleEndHour - visibleStartHour;
+                            
+                            // Convert hours to pixels (50px per hour)
+                            const top = (visibleStartHour - 6) * 50;
+                            const height = visibleDuration * 50;
+                            
+                            // Create event element
+                            const eventElement = document.createElement('div');
+                            eventElement.className = `event event-${event.event_type}`;
+                            eventElement.style.top = `${top}px`;
+                            
+                            // Make sure we have valid height (sometimes floating point issues)
+                            const minHeight = 20; // Minimum height in pixels
+                            eventElement.style.height = `${Math.max(height, minHeight)}px`;
+                            
+                            // For overlapping events, adjust width and position
+                            if (numEvents > 1) {
+                                const eventWidth = 100 / numEvents;
+                                const leftPosition = eventWidth * index;
+                                
+                                // Set width and left position as percentages for proper scaling
+                                eventElement.style.width = `${eventWidth}%`;
+                                eventElement.style.left = `${leftPosition}%`;
+                                eventElement.style.right = 'auto'; // Reset right positioning
+                            } else {
+                                // Single event takes full width with margins
+                                eventElement.style.left = '4px';
+                                eventElement.style.right = '4px';
+                                eventElement.style.width = 'auto';
+                            }
+                            
+                            eventElement.dataset.id = event.id;
+                            
+                            const startTime = event.startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                            const endTime = event.endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                            
+                            eventElement.innerHTML = `
+                                <div class="event-title">${event.title}</div>
+                                <div class="event-time">${startTime} - ${endTime}</div>
+                            `;
+                            
+                            // Add event listeners
+                            eventElement.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                openEventDetails(event);
+                            });
+                            
+                            // Add tooltip functionality
+                            eventElement.addEventListener('mouseenter', (e) => {
+                                showTooltip(e, event);
+                            });
+                            
+                            eventElement.addEventListener('mouseleave', () => {
+                                hideTooltip();
+                            });
+                            
+                            dayColumn.appendChild(eventElement);
+                        });
                     });
-                    
-                    eventElement.addEventListener('mouseleave', () => {
-                        hideTooltip();
-                    });
-                    
-                    dayColumn.appendChild(eventElement);
                 });
             }
 
