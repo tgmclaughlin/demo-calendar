@@ -6,6 +6,7 @@ from fastapi.requests import Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List, Optional
+import random
 
 from app.models.database import Event, get_db, init_db
 from app.models.schemas import EventCreate, EventResponse, SuccessResponse
@@ -136,3 +137,109 @@ async def get_calendar_for_llm(
         llm_calendar += "No events scheduled for this period.\n"
         
     return llm_calendar
+
+
+@app.post("/api/populate-mock-calendar", response_model=SuccessResponse)
+async def populate_mock_calendar(db: Session = Depends(get_db)):
+    """Populate the calendar with realistic events for an Applied AI Solutions architect."""
+    
+    # Clear existing events first
+    db.query(Event).delete()
+    
+    # Use March 8, 2025 (Saturday) as the start date to match the calendar UI
+    start_date = datetime(2025, 3, 8).date()
+    
+    # Client companies (big names)
+    clients = [
+        "Goldman Sachs", "JP Morgan", "Google", "Microsoft", "Meta", 
+        "Netflix", "Amazon", "Tesla"
+    ]
+    
+    # Types of meetings
+    meeting_types = [
+        "Project Kickoff", "Technical Review", "Architecture Workshop",
+        "Solution Design", "Progress Review"
+    ]
+    
+    # Locations
+    locations = [
+        "Client HQ", "Virtual", "Conference Room A", "Innovation Lab", 
+        "Teams Meeting"
+    ]
+    
+    # Event count tracker
+    events_created = 0
+    
+    # Create Tuesday/Thursday standups only
+    standup_dates = [
+        datetime(2025, 3, 11).date(),  # Tuesday
+        datetime(2025, 3, 13).date()   # Thursday
+    ]
+    
+    for standup_date in standup_dates:
+        standup = Event(
+            title="Team Standup",
+            start_time=datetime.combine(standup_date, datetime.min.time().replace(hour=9, minute=0)),
+            end_time=datetime.combine(standup_date, datetime.min.time().replace(hour=9, minute=30)),
+            event_type="work",
+            location="Teams Meeting"
+        )
+        db.add(standup)
+        events_created += 1
+    
+    # Add only 3 client meetings for the entire week
+    client_meetings = [
+        {
+            "title": f"{random.choice(clients)} Project Kickoff",
+            "date": datetime(2025, 3, 10).date(),  # Monday
+            "start_hour": 11,
+            "start_minute": 0,
+            "duration": 60,
+            "location": "Client HQ"
+        },
+        {
+            "title": f"{random.choice(clients)} Technical Review",
+            "date": datetime(2025, 3, 12).date(),  # Wednesday
+            "start_hour": 14,
+            "start_minute": 0,
+            "duration": 90,
+            "location": "Conference Room A"
+        },
+        {
+            "title": f"{random.choice(clients)} Architecture Workshop",
+            "date": datetime(2025, 3, 14).date(),  # Friday
+            "start_hour": 10,
+            "start_minute": 30,
+            "duration": 60,
+            "location": "Virtual"
+        }
+    ]
+    
+    for meeting in client_meetings:
+        event = Event(
+            title=meeting["title"],
+            start_time=datetime.combine(meeting["date"], datetime.min.time().replace(hour=meeting["start_hour"], minute=meeting["start_minute"])),
+            end_time=datetime.combine(meeting["date"], datetime.min.time().replace(hour=meeting["start_hour"], minute=meeting["start_minute"])) + timedelta(minutes=meeting["duration"]),
+            event_type="work",
+            location=meeting["location"]
+        )
+        db.add(event)
+        events_created += 1
+    
+    # Add one client dinner (Thursday evening - March 13)
+    thursday = datetime(2025, 3, 13).date()
+    dinner = Event(
+        title=f"Client Dinner with {random.choice(clients)} Executive Team",
+        start_time=datetime.combine(thursday, datetime.min.time().replace(hour=19, minute=0)),
+        end_time=datetime.combine(thursday, datetime.min.time().replace(hour=21, minute=0)),
+        event_type="work",
+        location="The Capital Grille"
+    )
+    db.add(dinner)
+    events_created += 1
+
+    
+    # Commit all events
+    db.commit()
+    
+    return {"success": True, "message": f"Calendar populated with {events_created} realistic events for an Applied AI Solutions architect."}
