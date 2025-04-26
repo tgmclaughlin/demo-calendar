@@ -1,3 +1,5 @@
+<img width="1535" alt="image" src="https://github.com/user-attachments/assets/9285576c-2d4b-47c2-a54f-6907f6b6fb28" />
+
 # Reusable Calendar Component
 
 A minimalist and flexible calendar component that can be integrated into any web application. Built with FastAPI and vanilla JavaScript, it provides a clean, modern interface for event management.
